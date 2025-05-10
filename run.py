@@ -430,12 +430,16 @@ def main():
 
     if world_size > 1:
         local_rank = os.environ.get('LOCAL_RANK', 0)
+        print("world_size: ", world_size, ", local_rank: ", local_rank)
         torch.cuda.set_device(int(local_rank))
         dist.init_process_group(
             backend='nccl',
-            timeout=datetime.timedelta(seconds=int(os.environ.get('DIST_TIMEOUT', 3600)))
+            timeout=datetime.timedelta(seconds=int(os.environ.get('DIST_TIMEOUT', 3600))),
+            device_id=torch.device(f"cuda:{local_rank}"),
+            world_size=world_size,
+            rank=rank,
         )
-
+    
     for _, model_name in enumerate(args.model):
         model = None
         date, commit_id = timestr('day'), githash(digits=8)
@@ -550,8 +554,12 @@ def main():
                                 else:
                                     raise ValueError('No hit or match found in the updated data.')
                                 print("Corrected support dataset size: ", len(updated_data))
-                            
-                                dump(updated_data, osp.join(LMUDataRoot(), support_dataset_name + '.tsv'))
+
+                        if world_size > 1:
+                            dist.barrier()
+                             
+                        if rank == 0:
+                            dump(updated_data, osp.join(LMUDataRoot(), support_dataset_name + '.tsv'))
                             
                         # important
                         if world_size > 1:

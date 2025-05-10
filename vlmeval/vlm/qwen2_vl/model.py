@@ -100,7 +100,7 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         self.model_path = model_path
         MODEL_CLS = None
 
-        if listinstr(['2.5', '2_5', 'qwen25'], model_path.lower()):
+        if listinstr(['2.5', '2_5', 'qwen25', 'vl-rethinker'], model_path.lower()):
             from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
             MODEL_CLS = Qwen2_5_VLForConditionalGeneration
             self.processor = AutoProcessor.from_pretrained(model_path)
@@ -201,9 +201,15 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
                 messages.append({'role': 'user', 'content': demo_message})
                 messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': s['answer']}]})
                 demo_message = []
-        if len(demo_message) > 0:
+        if len(demo_message) > 0: # last one is query message
             messages.append({'role': 'user', 'content': demo_message})
-
+            if listinstr(['vl-rethinker'], self.model_path.lower()):
+                # need to append 
+                # "\n\nPlease reason step by step, and put your final answer within \\boxed{} after the use queries."
+                # after the use of queries
+                messages.append({'role': 'user', 'content': "\n\nPlease reason step by step, and put your final answer within \\boxed{} after the use queries."})   
+                if self.verbose:
+                    print("vl-rethinker: ", end=">>>>>>>>>")
         if self.verbose:
             print(f'\033[31m{messages}\033[0m')
 

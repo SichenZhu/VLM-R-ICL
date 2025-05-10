@@ -985,6 +985,17 @@ qwen2vl_series = {
         max_new_tokens=8192,
         post_process=False,
     ),
+
+    "VL-Rethinker-7B": partial(
+        Qwen2VLChat,
+        model_path="TIGER-Lab/VL-Rethinker-7B",
+        min_pixels=256 * 28 * 28,
+        max_pixels=1280 * 28 * 28,
+        use_custom_prompt=False,
+        post_process=True,
+    ),
+  
+    
     "Qwen2-VL-72B-Instruct": partial(
         Qwen2VLChat,
         model_path="Qwen/Qwen2-VL-72B-Instruct",
