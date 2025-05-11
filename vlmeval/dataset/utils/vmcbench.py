@@ -77,7 +77,7 @@ def get_mc_score(row, use_parse=True):
 
 def report_vmc_acc(data):
     general_datasets = ["SEEDBench", "MMStar", "A-OKVQA", "VizWiz", "MMVet", "VQAv2", "OKVQA"]
-    reason_datasets = ["MMMU", "MathVista", "ScienceQA", "RealWorldQA", "GQA", "MathVision"]
+    reason_datasets = ["MMMU", "MathVista", "ScienceQA", "RealWorldQA", "GQA", "MathVision", "M3CoT"]
     ocr_datasets = ["TextVQA", "OCRVQA"]
     doc_datasets = ["AI2D", "ChartQA","DocVQA", "InfoVQA", "TableVQABench"]
     results = {}

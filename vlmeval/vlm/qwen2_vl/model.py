@@ -7,6 +7,7 @@ import math
 import logging
 
 import torch
+from transformers import BitsAndBytesConfig
 
 from ..base import BaseModel
 from .prompt import Qwen2VLPromptMixin
@@ -113,23 +114,30 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         max_gpu_mem = max(gpu_mems) if gpu_mems != [] else -1
         assert max_gpu_mem > 0
 
-        # If only one process and GPU memory is less than 40GB
-        if '72b' in self.model_path.lower():
-            self.model = MODEL_CLS.from_pretrained(
-                model_path, torch_dtype='auto', device_map=split_model(), attn_implementation='flash_attention_2'
-            )
-            self.model.eval()
-        elif auto_split_flag():
-            assert world_size == 1, 'Only support world_size == 1 when AUTO_SPLIT is set for non-72B Qwen2-VL'
-            # Will Use All GPUs to run one model
-            self.model = MODEL_CLS.from_pretrained(
-                model_path, torch_dtype='auto', device_map='auto', attn_implementation='flash_attention_2'
-            )
-        else:
-            self.model = MODEL_CLS.from_pretrained(
-                model_path, torch_dtype='auto', device_map='cpu', attn_implementation='flash_attention_2'
-            )
-            self.model.cuda().eval()
+        # # If only one process and GPU memory is less than 40GB
+        # if '72b' in self.model_path.lower():
+        #     self.model = MODEL_CLS.from_pretrained(
+        #         model_path, torch_dtype='auto', device_map=split_model(), attn_implementation='flash_attention_2'
+        #     )
+        #     self.model.eval()
+        # elif auto_split_flag():
+        #     assert world_size == 1, 'Only support world_size == 1 when AUTO_SPLIT is set for non-72B Qwen2-VL'
+        #     # Will Use All GPUs to run one model
+        #     self.model = MODEL_CLS.from_pretrained(
+        #         model_path, torch_dtype='auto', device_map='auto', attn_implementation='flash_attention_2'
+        #     )
+        # else:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        print(model_path, " is quantized.")
+        self.model = MODEL_CLS.from_pretrained(
+            model_path, torch_dtype='auto', device_map=rank, attn_implementation='flash_attention_2', quantization_config=quantization_config
+        )
+        self.model.eval()
 
         torch.cuda.empty_cache()
 

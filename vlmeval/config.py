@@ -994,6 +994,14 @@ qwen2vl_series = {
         use_custom_prompt=False,
         post_process=True,
     ),
+    "VL-Rethinker-72B": partial(
+        Qwen2VLChat,
+        model_path="TIGER-Lab/VL-Rethinker-72B",
+        min_pixels=256 * 28 * 28,
+        max_pixels=1280 * 28 * 28,
+        use_custom_prompt=False,
+        post_process=True,
+    ),
   
     
     "Qwen2-VL-72B-Instruct": partial(
