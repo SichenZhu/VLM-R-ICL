@@ -1254,8 +1254,8 @@ gemma_series = {
 }
 
 kimi_series = {
-    'Kimi-VL-A3B-Thinking': partial(KimiVL, model_path='moonshotai/Kimi-VL-A3B-Thinking'),
-    'Kimi-VL-A3B-Instruct': partial(KimiVL, model_path='moonshotai/Kimi-VL-A3B-Instruct')
+    'Kimi-VL-A3B-Thinking': partial(KimiVL, model_path='moonshotai/Kimi-VL-A3B-Thinking', temperature=0.6),
+    'Kimi-VL-A3B-Instruct': partial(KimiVL, model_path='moonshotai/Kimi-VL-A3B-Instruct', temperature=0.2)
 }
 
 internvl_groups = [

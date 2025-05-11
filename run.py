@@ -487,25 +487,26 @@ def main():
 
                         support_result_file = osp.join(pred_root, support_result_file_base)
                         
-                        main_inference(
-                            model,
-                            model_name,
-                            None,
-                            support_dataset,
-                            None,
-                            support_dataset_name,
-                            prev_pred_roots,
-                            pred_root,
-                            pred_root_meta,
-                            support_result_file,
-                            support_result_file_base,
-                            args,
-                            rank,
-                            world_size,
-                            logger,
-                            0,  # shot
-                            commit_id
-                        )
+                        if not osp.exists(support_result_file):
+                            main_inference(
+                                model,
+                                model_name,
+                                None,
+                                support_dataset,
+                                None,
+                                support_dataset_name,
+                                prev_pred_roots,
+                                pred_root,
+                                pred_root_meta,
+                                support_result_file,
+                                support_result_file_base,
+                                args,
+                                rank,
+                                world_size,
+                                logger,
+                                0,  # shot
+                                commit_id
+                            )
 
                         support_dataset_name_original = support_dataset_name
                         support_dataset_name = f'{model_name}_{support_dataset_name}_rationale_all'
@@ -522,14 +523,28 @@ def main():
                             
                             if 'image_path' in original_data:
                                 original_data = original_data[~pd.isna(original_data['image_path'])]
+                                original_data = original_data.sort_values(by='index')
+                                updated_data = updated_data.sort_values(by='index')
                                 assert updated_data['index'].tolist() == original_data['index'].tolist(), f"updated_data['index'] = {updated_data['index']}, original_data['index'] = {original_data['index']}"
-                                updated_data['index'] = original_data['index']
-                                updated_data['image_path'] = original_data['image_path']
+                                # updated_data['index'] = original_data['index']
+                                # updated_data['image_path'] = original_data['image_path']
+                                if 'image_path' in updated_data:
+                                    assert updated_data['image_path'].tolist() == original_data['image_path'].tolist(), f"updated_data['image_path'] = {updated_data['image_path']}, original_data['image_path'] = {original_data['image_path']}"
+                                else:
+                                    updated_data['image_path'] = original_data['image_path']
+
                             elif 'image' in original_data:
                                 original_data = original_data[~pd.isna(original_data['image'])]
+                                original_data = original_data.sort_values(by='index')
+                                updated_data = updated_data.sort_values(by='index')
                                 assert updated_data['index'].tolist() == original_data['index'].tolist(), f"updated_data['index'] = {updated_data['index']}, original_data['index'] = {original_data['index']}"
-                                updated_data['index'] = original_data['index']
-                                updated_data['image'] = original_data['image']
+                                # updated_data['index'] = original_data['index']
+                                # updated_data['image'] = original_data['image']
+                                if 'image' in updated_data:
+                                    assert updated_data['image'].tolist() == original_data['image'].tolist(), f"updated_data['image'] = {updated_data['image']}, original_data['image'] = {original_data['image']}"
+                                else:
+                                    updated_data['image'] = original_data['image']
+
                             else:
                                 raise ValueError('No image_path or image found in the original data.')
                             
