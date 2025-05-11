@@ -992,7 +992,7 @@ qwen2vl_series = {
         min_pixels=256 * 28 * 28,
         max_pixels=1280 * 28 * 28,
         use_custom_prompt=False,
-        post_process=True,
+        post_process=False
     ),
     "VL-Rethinker-72B": partial(
         Qwen2VLChat,
@@ -1000,7 +1000,7 @@ qwen2vl_series = {
         min_pixels=256 * 28 * 28,
         max_pixels=1280 * 28 * 28,
         use_custom_prompt=False,
-        post_process=True,
+        post_process=False
     ),
   
     

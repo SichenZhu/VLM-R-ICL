@@ -120,6 +120,7 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
     if model_name is not None and 'Llama-4' in model_name:
         kwargs = {'use_vllm': use_vllm}
     model = supported_VLM[model_name](**kwargs) if isinstance(model, str) else model
+    print("model: ", model_name, " | post_process: ", model.post_process)
 
     is_api = getattr(model, 'is_api', False)
     if is_api:
@@ -165,6 +166,9 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
             retriever = None
 
     for i in tqdm(range(query_lt)):
+        if i > 2: # stop the verbose after 2 queries
+            model.verbose = False
+
         idx = query_data.iloc[i]['index']
         if idx in res:
             continue
@@ -199,8 +203,8 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
         response = model.generate(message=demo_msgs+struct, dataset=query_dataset_name)
         torch.cuda.empty_cache()
 
-        if verbose:
-            print(response, flush=True)
+        # if verbose:
+        #     print(response, flush=True)
 
         res[idx] = response
         if (i + 1) % 10 == 0:

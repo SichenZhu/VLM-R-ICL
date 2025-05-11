@@ -488,6 +488,8 @@ def main():
                         support_result_file = osp.join(pred_root, support_result_file_base)
                         
                         if not osp.exists(support_result_file):
+                            if rank == 0:
+                                print("ATTN: Running on the training data for ICL rationale generation...")
                             main_inference(
                                 model,
                                 model_name,
@@ -507,7 +509,12 @@ def main():
                                 0,  # shot
                                 commit_id
                             )
-
+                            if rank == 0:
+                                print("ATTN: Done running on the training data for ICL rationale generation...")
+                        else:
+                            if rank == 0:
+                                print("ATTN: ICL rationale generation (rationale_all) file already exists for this dataset... Loading the existing file...")
+                        
                         support_dataset_name_original = support_dataset_name
                         support_dataset_name = f'{model_name}_{support_dataset_name}_rationale_all'
                         if rank == 0: 
@@ -529,7 +536,12 @@ def main():
                                 # updated_data['index'] = original_data['index']
                                 # updated_data['image_path'] = original_data['image_path']
                                 if 'image_path' in updated_data:
-                                    assert updated_data['image_path'].tolist() == original_data['image_path'].tolist(), f"updated_data['image_path'] = {updated_data['image_path']}, original_data['image_path'] = {original_data['image_path']}"
+                                    try:
+                                        assert updated_data['image_path'].tolist() == original_data['image_path'].tolist(), f"updated_data['image_path'] = {updated_data['image_path']}, original_data['image_path'] = {original_data['image_path']}"
+                                    except:
+                                        # question should be the same
+                                        assert updated_data['question'].tolist() == original_data['question'].tolist(), f"updated_data['question'] = {updated_data['question']}, original_data['question'] = {original_data['question']}"
+                                        updated_data['image_path'] = original_data['image_path']
                                 else:
                                     updated_data['image_path'] = original_data['image_path']
 
@@ -541,7 +553,12 @@ def main():
                                 # updated_data['index'] = original_data['index']
                                 # updated_data['image'] = original_data['image']
                                 if 'image' in updated_data:
-                                    assert updated_data['image'].tolist() == original_data['image'].tolist(), f"updated_data['image'] = {updated_data['image']}, original_data['image'] = {original_data['image']}"
+                                    try:
+                                        assert updated_data['image'].tolist() == original_data['image'].tolist(), f"updated_data['image'] = {updated_data['image']}, original_data['image'] = {original_data['image']}"  # base64 may result in partial match
+                                    except:
+                                        # question should be the same
+                                        assert updated_data['question'].tolist() == original_data['question'].tolist(), f"updated_data['question'] = {updated_data['question']}, original_data['question'] = {original_data['question']}"
+                                        updated_data['image'] = original_data['image']
                                 else:
                                     updated_data['image'] = original_data['image']
 
@@ -574,6 +591,7 @@ def main():
                             dist.barrier()
                              
                         if rank == 0:
+                            print("ATTN: Dumping the updated data to the support dataset: ", osp.join(LMUDataRoot(), support_dataset_name + '.tsv'))
                             dump(updated_data, osp.join(LMUDataRoot(), support_dataset_name + '.tsv'))
                             
                         # important
@@ -581,6 +599,8 @@ def main():
                             dist.barrier()
                         # change one value from the parent class of support_dataset
                         support_dataset.__class__.DATASET_URL[support_dataset_name] = osp.join(LMUDataRoot(), support_dataset_name + '.tsv')
+                        if rank == 0:
+                            print("ATTN: Re-building support dataset to include ICL rationale generation: support_dataset_name ", support_dataset_name)
                         support_dataset = main_build_dataset(model_name, support_dataset_name, use_config, cfg, rank, world_size, logger)
                     
                     if support_dataset is None:
@@ -619,6 +639,8 @@ def main():
                             # change one value from the parent class of support_dataset
                             support_dataset.__class__.DATASET_URL[support_dataset_name] = osp.join(LMUDataRoot(), support_dataset_name + '.tsv')
                             support_dataset = main_build_dataset(model_name, support_dataset_name, use_config, cfg, rank, world_size, logger)
+                            if rank == 0:
+                                print("ATTN: len(tags) > 1; re-building support dataset to include ICL rationale generation: support_dataset_name ", support_dataset_name)
                         
                         if stage < len(tags) - 1:
                             args.mode == 'infer'
@@ -628,6 +650,8 @@ def main():
                         # previous_query_data_cot are from previous stages
 
                         for shot in args.num_shots:
+                            if rank == 0:
+                                print("ATTN: Running inference for shot: ", shot, " support_dataset_name: ", support_dataset_name, " query_dataset_name: ", query_dataset_name)
                             result_file_base = f'{model_name}_{support_dataset_name}_{query_dataset_name}_{args.rag_method}_{shot}.xlsx'
                             # Handling Multi-Turn Dataset
                             if query_dataset.TYPE == 'MT':

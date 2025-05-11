@@ -13,6 +13,7 @@ from ..base import BaseModel
 from .prompt import Qwen2VLPromptMixin
 from ...smp import get_rank_and_world_size, get_gpu_memory, auto_split_flag, listinstr
 
+from termcolor import colored
 
 def ensure_image_url(image: str) -> str:
     prefixes = ['http://', 'https://', 'file://', 'data:image;']
@@ -79,6 +80,8 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         system_prompt: str | None = None,
         post_process: bool = False,  # if True, will try to only extract stuff in the last \boxed{}.
         verbose: bool = True,
+        save_raw_output: bool = True,
+        output_dir: str = "./outputs",
     ):
         super().__init__(use_custom_prompt=use_custom_prompt)
         self.min_pixels = min_pixels
@@ -109,7 +112,8 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             from transformers import Qwen2VLForConditionalGeneration, Qwen2VLProcessor
             MODEL_CLS = Qwen2VLForConditionalGeneration
             self.processor = Qwen2VLProcessor.from_pretrained(model_path)
-
+        if rank == 0:
+            print(f"now testing.....{self.model_path}")
         gpu_mems = get_gpu_memory()
         max_gpu_mem = max(gpu_mems) if gpu_mems != [] else -1
         assert max_gpu_mem > 0
@@ -133,7 +137,8 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.float16,
         )
-        print(model_path, " is quantized.")
+        if rank == 0:
+            print(model_path, " is quantized.")
         self.model = MODEL_CLS.from_pretrained(
             model_path, torch_dtype='auto', device_map=rank, attn_implementation='flash_attention_2', quantization_config=quantization_config
         )
@@ -216,10 +221,13 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
                 # "\n\nPlease reason step by step, and put your final answer within \\boxed{} after the use queries."
                 # after the use of queries
                 messages.append({'role': 'user', 'content': "\n\nPlease reason step by step, and put your final answer within \\boxed{} after the use queries."})   
-                if self.verbose:
-                    print("vl-rethinker: ", end=">>>>>>>>>")
+                # if self.verbose:
+                #     print("vl-rethinker: ", end=">>>>>>>>>")
+        
         if self.verbose:
-            print(f'\033[31m{messages}\033[0m')
+            print('\033generate_inner[31m', end="")
+            print(colored(f'{messages}', "dark_grey"), end="")
+            print('\033[0m')
 
         if messages[-1]['role'] == 'assistant':
             text = self.processor.apply_chat_template([messages], tokenize=False, add_generation_prompt=False)
@@ -240,27 +248,33 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
         response = out[0]
+        
+        resp = response.split('\\boxed{')[-1]
+        lt = len(resp)
+        counter, end = 1, None
+        for i in range(lt):
+            if resp[i] == '{':
+                counter += 1
+            elif resp[i] == '}':
+                counter -= 1
+            if counter == 0:
+                end = i
+                break
+            elif i == lt - 1:
+                end = lt
+                break
+        if end is not None:
+            prediction = resp[:end]
+        
         if self.post_process:
-            resp = response.split('\\boxed{')[-1]
-            lt = len(resp)
-            counter, end = 1, None
-            for i in range(lt):
-                if resp[i] == '{':
-                    counter += 1
-                elif resp[i] == '}':
-                    counter -= 1
-                if counter == 0:
-                    end = i
-                    break
-                elif i == lt - 1:
-                    end = lt
-                    break
-            if end is not None:
-                response = resp[:end]
+            response = prediction
 
         if self.verbose:
-            print(f'\033[32m{response}\033[0m')
-        return response
+            print("\033generate_inner[32m", end="")
+            print(colored(f'{response}', "blue"), end="")
+            print("\033[0m")
+        # return response
+        return {"prediction": prediction, "rationale": response}
     
     def call_inner(self, message, dataset=None, output_hidden_states=False, output_attentions=False):
         try:
@@ -287,7 +301,9 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             messages.append({'role': 'user', 'content': demo_message})
 
         if self.verbose:
-            print(f'\033[31m{messages}\033[0m')
+            print("\033call_inner[31m", end="")
+            print(colored(f'{messages}', "light_grey"), end="")
+            print("\033[0m")
 
         if messages[-1]['role'] == 'assistant':
             text = self.processor.apply_chat_template([messages], tokenize=False, add_generation_prompt=False)
