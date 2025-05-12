@@ -131,16 +131,23 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         #         model_path, torch_dtype='auto', device_map='auto', attn_implementation='flash_attention_2'
         #     )
         # else:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.float16,
-        )
-        if rank == 0:
-            print(model_path, " is quantized.")
+        if '72b' in self.model_path.lower():
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.float16,
+            )
+            if rank == 0:
+                print(model_path, " is quantized.")
+        else:
+            quantization_config = None
+        
         self.model = MODEL_CLS.from_pretrained(
-            model_path, torch_dtype='auto', device_map=rank, attn_implementation='flash_attention_2', quantization_config=quantization_config
+            model_path, torch_dtype=torch.float16, 
+            device_map=rank, 
+            attn_implementation='flash_attention_2', 
+            quantization_config=quantization_config
         )
         self.model.eval()
 
