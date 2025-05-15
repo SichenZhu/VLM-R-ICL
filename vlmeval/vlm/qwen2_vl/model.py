@@ -140,11 +140,15 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             )
             if rank == 0:
                 print(model_path, " is quantized.")
+
+            torch_dtype = torch.bfloat16
         else:
             quantization_config = None
-        
+            torch_dtype = torch.bfloat16
+
         self.model = MODEL_CLS.from_pretrained(
-            model_path, torch_dtype=torch.float16, 
+            model_path, 
+            torch_dtype=torch_dtype, 
             device_map=rank, 
             attn_implementation='flash_attention_2', 
             quantization_config=quantization_config

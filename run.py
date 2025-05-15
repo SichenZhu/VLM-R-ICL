@@ -485,7 +485,7 @@ def main():
                         if support_dataset.TYPE == 'MT':
                             support_result_file_base = support_result_file_base.replace('.xlsx', '.tsv')
 
-                        support_result_file = osp.join(pred_root, support_result_file_base)
+                        support_result_file = osp.join(pred_root_meta, support_result_file_base)
                         
                         if not osp.exists(support_result_file):
                             if rank == 0:
@@ -513,7 +513,7 @@ def main():
                                 print("ATTN: Done running on the training data for ICL rationale generation...")
                         else:
                             if rank == 0:
-                                print("ATTN: ICL rationale generation (rationale_all) file already exists for this dataset... Loading the existing file...")
+                                print("ATTN: ICL rationale generation (rationale_all) file already exists for this dataset... Loading the existing file...{}".format(support_result_file))
                         
                         support_dataset_name_original = support_dataset_name
                         support_dataset_name = f'{model_name}_{support_dataset_name}_rationale_all'
