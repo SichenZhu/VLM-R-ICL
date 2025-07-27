@@ -101,6 +101,7 @@ class InternVLChat(BaseModel):
 
     def __init__(self,
                  model_path='OpenGVLab/InternVL-Chat-V1-5',
+                 quantization=False,
                  load_in_8bit=False,
                  use_mpo_prompt=False,
                  version='V1.0',
@@ -121,6 +122,9 @@ class InternVLChat(BaseModel):
         self.use_lmdeploy = use_lmdeploy
         self.cot_prompt_version = cot_prompt_version
         self.use_mpo_prompt = use_mpo_prompt
+        if self.use_mpo_prompt:
+            # set USE_COT to 1
+            os.environ['USE_COT'] = '1'
         self.use_cot = (os.getenv('USE_COT') == '1')
         self.use_postprocess = use_postprocess
 
@@ -185,12 +189,22 @@ class InternVLChat(BaseModel):
                 low_cpu_mem_usage=True,
                 device_map=device_map).eval()
         else:
-            self.model = AutoModel.from_pretrained(
-                model_path,
-                torch_dtype=torch.bfloat16,
-                load_in_8bit=load_in_8bit,
-                trust_remote_code=True,
-                low_cpu_mem_usage=True).eval().cuda()
+            if not quantization:
+                self.model = AutoModel.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.bfloat16,
+                    load_in_8bit=load_in_8bit,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True).eval().cuda()
+            else:
+                self.model = AutoModel.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.bfloat16,
+                    load_in_8bit=True,
+                    use_flash_attn=True,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True).eval()
+                print("load_in_8bit=True, use_flash_attn=True")
             self.device = 'cuda'
 
         if best_of_n > 1:
@@ -242,7 +256,7 @@ class InternVLChat(BaseModel):
         else:
             return True
 
-    def build_prompt(self, line, dataset=None):
+    def build_prompt(self, line, dataset=None, use_answer=False):
         use_mpo_prompt = self.use_mpo_prompt and (self.use_cot or dataset in ['MMStar', 'HallusionBench', 'OCRBench'])
 
         assert self.use_custom_prompt(dataset)
@@ -265,7 +279,7 @@ class InternVLChat(BaseModel):
             question = line['question']
             if listinstr(['LLaVABench', 'WildVision'], dataset):
                 prompt = question + '\nAnswer this question in detail.'
-            elif listinstr(['OCRVQA', 'TextVQA', 'ChartQA', 'DocVQA', 'InfoVQA', 'OCRBench',
+            elif listinstr(['OCRVQA', 'TextVQA', 'OK-VQA', 'ChartQA', 'DocVQA', 'InfoVQA', 'OCRBench',
                             'DUDE', 'SLIDEVQA', 'GQA', 'MMLongBench_DOC'], dataset):
                 prompt = question + '\nAnswer the question using a single word or phrase.'
             elif listinstr(['MathVista', 'MathVision', 'VCR', 'MTVQA', 'MMVet', 'MathVerse',
@@ -282,8 +296,16 @@ class InternVLChat(BaseModel):
             if os.getenv('USE_COT') == '1':
                 prompt = build_qa_cot_prompt(line, prompt, self.cot_prompt)
 
-        message = [dict(type='text', value=prompt)]
-        message.extend([dict(type='image', value=s) for s in tgt_path])
+        message = [dict(type='image', value=s) for s in tgt_path]
+        message.extend([dict(type='text', value=prompt)])
+        if use_answer:
+            if 'rationale' in line:
+                answer = toliststr(line['rationale'])[0]
+            elif 'prediction' in line:
+                answer = toliststr(line['prediction'])[0]
+            elif 'answer' in line:
+                answer = toliststr(line['answer'])[0]
+            message.append(dict(type='answer', value=answer))
 
         if use_mpo_prompt:
             message = build_mpo_prompt(message, line, dataset)
@@ -420,6 +442,7 @@ class InternVLChat(BaseModel):
                 num_patches_list=num_patches_list,
             )
         response = response_list[0]
+        raw_output = response
 
         if dataset is not None and not listinstr(['WeMath'], dataset):
             if use_mpo_prompt:
@@ -427,7 +450,7 @@ class InternVLChat(BaseModel):
             elif self.use_cot and self.use_postprocess:
                 response = extract_boxed_content(response)
 
-        return response
+        return {"prediction": response, "rationale": raw_output}
 
     def generate_inner(self, message, dataset=None):
         self.set_max_num(dataset)
@@ -440,6 +463,73 @@ class InternVLChat(BaseModel):
             return self.generate_v2(message, dataset)
         else:
             raise ValueError(f'Unsupported version: {self.version}')
+    
+    def call_inner(self, message, dataset=None, output_hidden_states=False, output_attentions=False):
+        self.set_max_num(dataset)
+        print(f'InternVL model version: {self.version}')
+        assert self.version == 'V2.0', 'call_inner only support V2.0'
+
+        use_mpo_prompt = self.use_mpo_prompt and (self.use_cot or dataset in ['MMStar', 'HallusionBench', 'OCRBench'])
+
+        image_num = len([x for x in message if x['type'] == 'image'])
+        max_num = max(1, min(self.max_num, self.total_max_num // image_num))
+        prompt = reorganize_prompt(message, image_num, dataset=dataset)
+
+        if dataset is not None and DATASET_MODALITY(dataset) == 'VIDEO':
+            prompt = build_video_prompt(prompt, dataset)
+
+        if image_num > 1:
+            image_path = [x['value'] for x in message if x['type'] == 'image']
+            num_patches_list, pixel_values_list = [], []
+            for image_idx, file_name in enumerate(image_path):
+                upscale_flag = image_idx == 0 and dataset is not None and listinstr(['MMMU'], dataset)
+                curr_pixel_values = load_image(
+                    file_name, max_num=max_num, upscale=upscale_flag).to(self.device).to(torch.bfloat16)
+                num_patches_list.append(curr_pixel_values.size(0))
+                pixel_values_list.append(curr_pixel_values)
+            pixel_values = torch.cat(pixel_values_list, dim=0)
+        elif image_num == 1:
+            image_path = [x['value'] for x in message if x['type'] == 'image'][0]
+            upscale_flag = dataset is not None and listinstr(['MMMU'], dataset)
+            pixel_values = load_image(
+                image_path, max_num=max_num, upscale=upscale_flag).to(self.device).to(torch.bfloat16)
+            num_patches_list = [pixel_values.size(0)]
+        else:
+            pixel_values = None
+            num_patches_list = []
+
+        for idx in range(self.best_of_n):
+            kwargs_default = self.kwargs.copy()
+            kwargs_default['do_sample'] = idx > 0
+            kwargs_default['temperature'] = 0.7
+            kwargs_default['top_p'] = 0.95
+
+            if self.use_lmdeploy:
+                from lmdeploy import GenerationConfig
+                gen_config = GenerationConfig(**kwargs_default)
+                gen_config.random_seed = None
+                messages_list = prepare_messages_list(prompt, image_path, system_prompt=self.system_prompt)
+                assert len(messages_list) == 1
+                response = self.model(messages_list, gen_config=gen_config)[0]
+                response = response.text
+            else:
+                if self.system_prompt is not None:
+                    self.model.system_message = self.system_prompt
+                inputs = self.model.get_hidden_states(  # self-defined function
+                    self.tokenizer,
+                    pixel_values=pixel_values,
+                    num_patches_list=num_patches_list,
+                    question=prompt,
+                    generation_config=kwargs_default,
+                    verbose=idx == 0,
+                )
+                outputs = self.model(
+                    **inputs,
+                    output_hidden_states=output_hidden_states,
+                    output_attentions=output_attentions,
+                )
+        return outputs
+    
 
     def build_history(self, message):
         # Global Variables

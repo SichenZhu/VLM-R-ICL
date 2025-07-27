@@ -2,6 +2,10 @@ output/
 cache/
 data/
 outputs/
+logs/
+scripts/srun.sh
+*.ipynb
+
 
 .idea/
 

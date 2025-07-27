@@ -18,36 +18,83 @@ def parse_args():
 
 
 # Only API model is accepted
-def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_nproc=4, ignore_failed=False):
+# def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_nproc=4, ignore_failed=False):
+def infer_data_api(model, work_dir, model_name, support_dataset, query_dataset, index_set=None, api_nproc=4, ignore_failed=False, rag_method=None, num_shots=0):
     rank, world_size = get_rank_and_world_size()
     assert rank == 0 and world_size == 1
-    dataset_name = dataset.dataset_name
-    data = dataset.data
+    # dataset_name = dataset.dataset_name
+    # data = dataset.data
+    query_dataset_name = query_dataset.dataset_name
+    query_data = query_dataset.data
     if index_set is not None:
-        data = data[data['index'].isin(index_set)]
+        # data = data[data['index'].isin(index_set)]
+        query_data = query_data[query_data['index'].isin(index_set)]
 
     model = supported_VLM[model_name]() if isinstance(model, str) else model
     assert getattr(model, 'is_api', False)
     if hasattr(model, 'set_dump_image'):
-        model.set_dump_image(dataset.dump_image)
+        # model.set_dump_image(dataset.dump_image)
+        model.set_dump_image(query_dataset.dump_image)
 
-    lt, indices = len(data), list(data['index'])
+    # lt, indices = len(data), list(data['index'])
+    query_lt, query_indices = len(query_data), list(query_data['index'])
+
+    if support_dataset is not None:
+        support_dataset_name = support_dataset.dataset_name
+        support_data = support_dataset.data
+        support_lt, support_indices = len(support_data), list(support_data['index'])
+        assert rag_method == 'random', 'Only random method is supported for API model'
+        retriever = None
 
     structs = []
-    for i in range(lt):
-        item = data.iloc[i]
-        if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(dataset_name):
+    # for i in range(lt):
+    #     item = data.iloc[i]
+    #     if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(dataset_name):
+    #         assert hasattr(model, 'build_prompt')
+    #         struct = model.build_prompt(item, dataset=dataset_name)
+    #     else:
+    #         struct = dataset.build_prompt(item)
+    #     structs.append(struct)
+    for i in range(query_lt):
+        item = query_data.iloc[i]
+        if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(query_dataset_name):
             assert hasattr(model, 'build_prompt')
-            struct = model.build_prompt(item, dataset=dataset_name)
+            struct = model.build_prompt(item, dataset=query_dataset_name)
         else:
-            struct = dataset.build_prompt(item)
-        structs.append(struct)
+            struct = query_dataset.build_prompt(item)
 
-    out_file = f'{work_dir}/{model_name}_{dataset_name}_supp.pkl'
+        demo_msgs = []
+        if support_dataset is not None:
+            if rag_method == 'random':
+                random_support_id = np.random.choice(len(support_data), num_shots, replace=False)
+                if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(support_dataset_name):
+                    for id in random_support_id:
+                        demo_msgs += model.build_prompt(support_data.iloc[id], dataset=support_dataset_name, use_answer=True)
+                else:
+                    for id in random_support_id:
+                        demo_msgs += support_dataset.build_prompt(support_data.iloc[id], use_answer=True)
+            elif retriever is not None:
+                for demo in retriever.find(item, num_shots):
+                    # demo is a dict list, correct the image path
+                    for k in demo:
+                        if k['type'] == 'image' and '/nethome/chuang475/LMUData' in k['value']: # ATTN
+                            k['value'] = k['value'].replace('/nethome/chuang475/LMUData', '/coc/pskynet4/chuang475/datasets/LMUData') # ATTN
+                    demo_msgs += demo
+        
+        structs.append(demo_msgs + struct)
+        
+
+    # out_file = f'{work_dir}/{model_name}_{dataset_name}_supp.pkl'
+    if support_dataset is not None:
+        out_file = f'{work_dir}/{model_name}_{support_dataset_name}_{query_dataset_name}_{rag_method}_{num_shots}_supp.pkl'
+    else:
+        out_file = f'{work_dir}/{model_name}_{query_dataset_name}_supp.pkl'
 
     # To reuse records in MMBench_V11
-    if dataset_name in ['MMBench', 'MMBench_CN']:
-        v11_pred = f'{work_dir}/{model_name}_{dataset_name}_V11.xlsx'
+    # if dataset_name in ['MMBench', 'MMBench_CN']:
+    #     v11_pred = f'{work_dir}/{model_name}_{dataset_name}_V11.xlsx'
+    if query_dataset_name in ['MMBench', 'MMBench_CN']:
+        v11_pred = f'{work_dir}/{model_name}_{query_dataset_name}_V11.xlsx'
         if osp.exists(v11_pred):
             try:
                 reuse_inds = load('http://opencompass.openxlab.space/utils/mmb_reuse.pkl')
@@ -63,14 +110,18 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
         if ignore_failed:
             res = {k: v for k, v in res.items() if FAIL_MSG not in v}
 
-    structs = [s for i, s in zip(indices, structs) if i not in res]
-    indices = [i for i in indices if i not in res]
+    # structs = [s for i, s in zip(indices, structs) if i not in res]
+    # indices = [i for i in indices if i not in res]
+    structs = [s for i, s in zip(query_indices, structs) if i not in res]
+    query_indices = [i for i in query_indices if i not in res]
 
     gen_func = model.generate
-    structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
+    # structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
+    structs = [dict(message=struct, dataset=query_dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=indices)
+        # track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=indices)
+        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=query_indices)
 
     res = load(out_file)
     if index_set is not None:
@@ -129,9 +180,13 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
             model=model,
             work_dir=work_dir,
             model_name=model_name,
-            dataset=query_dataset,  # TODO: add support_dataset
+            # dataset=query_dataset,  # TODO: add support_dataset
+            support_dataset=support_dataset,
+            query_dataset=query_dataset,
             index_set=set(query_indices),
-            api_nproc=api_nproc)
+            api_nproc=api_nproc,
+            rag_method=rag_method,
+            num_shots=num_shots)
         for idx in query_indices:
             assert idx in supp
         res.update(supp)
@@ -174,7 +229,10 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
             continue
 
         if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(query_dataset_name):
-            struct = model.build_prompt(query_data.iloc[i], dataset=query_dataset_name)
+            if previous_query_data_cot is None:
+                struct = model.build_prompt(query_data.iloc[i], dataset=query_dataset_name)
+            else:
+                raise NotImplementedError('Previous query data COT is not supported for custom prompt')
         else:
             if previous_query_data_cot is None:
                 struct = query_dataset.build_prompt(query_data.iloc[i])
@@ -190,7 +248,7 @@ def infer_data(model, model_name, work_dir, support_dataset, query_dataset, out_
                 random_support_id = np.random.choice(len(support_data), num_shots, replace=False)
                 if hasattr(model, 'use_custom_prompt') and model.use_custom_prompt(support_dataset_name):
                     for id in random_support_id:
-                        demo_msgs += model.build_prompt(support_data.iloc[id], dataset=support_dataset_name)
+                        demo_msgs += model.build_prompt(support_data.iloc[id], dataset=support_dataset_name, use_answer=True)
                 else:
                     for id in random_support_id:
                         demo_msgs += support_dataset.build_prompt(support_data.iloc[id], use_answer=True)
@@ -259,6 +317,27 @@ def infer_data_job(
                     
                 data['prediction'] = data['rationale'].apply(lambda x: replace_last_dot(extract_answer_content(x)))
                 dump(data, result_file)
+
+            if ('MPO' in model_name or "Gemini" in model_name) and ('TextVQA' in query_dataset_name or "OK-VQA" in query_dataset_name):
+                import re
+                def mpo_post_processing(response, dataset):
+                    def extract_answer(text):
+                        match = re.search(r'(Final answer:|Answer:)\s*(.*)', text, re.IGNORECASE)
+                        if match:
+                            return match.group(2).strip()
+                        return text
+                    response = extract_answer(response).strip()
+                    return response
+                    
+                if 'prediction' in data.columns and 'rationale' not in data.columns:
+                    # change the column name "prediction" to "rationale"
+                    data.rename(columns={'prediction': 'rationale'}, inplace=True)
+                    data['prediction'] = data['rationale'].apply(lambda x: mpo_post_processing(x, query_dataset_name))
+                else:
+                    data['prediction'] = data['prediction'].apply(lambda x: mpo_post_processing(x, query_dataset_name))
+
+                dump(data, result_file)
+                            
 
             if 'rationale' in data.columns:
                 results = {k: {'prediction': v, 'rationale': q} for k, v, q in zip(data['index'], data['prediction'], data['rationale'])}

@@ -236,11 +236,29 @@ api_models = {
     "GeminiFlash2-0": partial(
         GeminiProVision, model="gemini-2.0-flash", temperature=0, retry=10
     ),
-    "GeminiPro2-0": partial(
-        GeminiProVision, model="gemini-2.0-pro-exp", temperature=0, retry=10
+    # "GeminiPro2-0": partial(
+    #     GeminiProVision, model="gemini-2.0-pro-exp", temperature=0, retry=10
+    # ),
+    "GeminiFlash2-0-non-thinking": partial(
+        GeminiProVision, model="gemini-2.0-flash", temperature=0, retry=10, max_tokens=8192, 
+        prompt="\nAnswer the question directly."
+    ),
+    "GeminiFlash2-0-thinking": partial(
+        GeminiProVision, model="gemini-2.0-flash", temperature=0, retry=10, max_tokens=8192, 
+        prompt=(
+            "\nGive step by step reasoning before you answer, and when you're ready to answer, please use the format \"Final answer: ..\""
+        )
     ),
     "GeminiPro2-5": partial(
         GeminiProVision, model="gemini-2.5-pro-exp-03-25", temperature=0, retry=10
+    ),
+    "GeminiFlash2-5-non-thinking": partial(
+        GeminiProVision, model="gemini-2.5-flash", temperature=0, retry=10, max_tokens=65535, thinking_budget=0,
+        prompt=("Please put your final answer within \\boxed{}.")
+    ),
+    "GeminiFlash2-5-thinking": partial(
+        GeminiProVision, model="gemini-2.5-flash", temperature=0, retry=10, max_tokens=65535, thinking_budget=5000,# 24576,
+        prompt=("Please put your final answer within \\boxed{}.")
     ),
     "GeminiPro1-5-002": partial(
         GPT4V, model="gemini-1.5-pro-002", temperature=0, retry=10
@@ -750,12 +768,14 @@ internvl2_5_mpo = {
         model_path="OpenGVLab/InternVL2_5-38B-MPO",
         version="V2.0",
         use_mpo_prompt=True,
+        quantization=True,
     ),
     "InternVL2_5-78B-MPO": partial(
         InternVLChat,
         model_path="OpenGVLab/InternVL2_5-78B-MPO",
         version="V2.0",
         use_mpo_prompt=True,
+        quantization=True
     ),
 }
 
@@ -979,8 +999,10 @@ qwen2vl_series = {
     "QVQ-72B-Preview": partial(
         Qwen2VLChat,
         model_path="Qwen/QVQ-72B-Preview",
-        min_pixels=1280 * 28 * 28,
-        max_pixels=16384 * 28 * 28,
+        # min_pixels=1280 * 28 * 28,
+        # max_pixels=16384 * 28 * 28,
+        min_pixels=256*28*28,
+        max_pixels=1280*28*28,
         system_prompt="You are a helpful and harmless assistant. You are Qwen developed by Alibaba. You should think step-by-step.",
         max_new_tokens=8192,
         post_process=False,

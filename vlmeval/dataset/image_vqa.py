@@ -19,6 +19,8 @@ class ImageVQADataset(ImageBaseDataset):
         'OCRVQA_TESTCORE': 'https://opencompass.openxlab.space/utils/VLMEval/OCRVQA_TESTCORE.tsv',
         'TextVQA_VAL': 'https://opencompass.openxlab.space/utils/VLMEval/TextVQA_VAL.tsv',
         'TextVQA_TRAIN': 'https://opencompass.openxlab.space/utils/VLMEval/TextVQA_TRAIN.tsv',
+        'OK-VQA_TRAIN': '/data1/szhu337/VLM_proj/VQA-ICL/data/VLM-R-ICL_data/LMUData/OK-VQA_TRAIN.tsv',
+        'OK-VQA_VAL': '/data1/szhu337/VLM_proj/VQA-ICL/data/VLM-R-ICL_data/LMUData/OK-VQA_VAL.tsv',
         'DocVQA_VAL': 'https://opencompass.openxlab.space/utils/VLMEval/DocVQA_VAL.tsv',
         'DocVQA_TEST': 'https://opencompass.openxlab.space/utils/VLMEval/DocVQA_TEST.tsv',
         'InfoVQA_VAL': 'https://opencompass.openxlab.space/utils/VLMEval/InfoVQA_VAL.tsv',
@@ -68,7 +70,7 @@ class ImageVQADataset(ImageBaseDataset):
         lt = len(data)
         pool = mp.Pool(16)
         lines = [data.iloc[i] for i in range(lt)]
-        if listinstr(['TextVQA'], dataset):
+        if listinstr(['TextVQA', 'OK-VQA'], dataset):
             res = pool.map(partial(process_line, method='vqa_score'), lines)
         elif listinstr(['ChartQA'], dataset):
             res = pool.map(partial(process_line, method='relaxed_accuracy'), lines)

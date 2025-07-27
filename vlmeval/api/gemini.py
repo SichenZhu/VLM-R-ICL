@@ -16,7 +16,9 @@ class GeminiWrapper(BaseAPI):
                  verbose: bool = True,
                  temperature: float = 0.0,
                  system_prompt: str = None,
+                 prompt: str = None,
                  max_tokens: int = 2048,
+                 thinking_budget: int = None,
                  proxy: str = None,
                  backend='genai',
                  project_id='vlmeval',
@@ -26,6 +28,9 @@ class GeminiWrapper(BaseAPI):
         self.fail_msg = 'Failed to obtain answer via API. '
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.prompt = prompt
+        self.thinking_budget = thinking_budget
+
         if key is None:
             key = os.environ.get('GOOGLE_API_KEY', None)
         # Try to load backend from environment variable
@@ -52,9 +57,13 @@ class GeminiWrapper(BaseAPI):
         messages = [] if self.system_prompt is None else [self.system_prompt]
         for inp in inputs:
             if inp['type'] == 'text':
-                messages.append(inp['value'])
+                messages.append(inp['value'] + self.prompt)
             elif inp['type'] == 'image':
                 messages.append(Image.open(inp['value']))
+            elif inp['type'] == 'answer':
+                messages.append(inp['value'])
+            else:
+                raise ValueError(f"Unsupported input type: {inp['type']}")
         return messages
 
     def build_msgs_vertex(self, inputs):
@@ -62,9 +71,14 @@ class GeminiWrapper(BaseAPI):
         messages = [] if self.system_prompt is None else [self.system_prompt]
         for inp in inputs:
             if inp['type'] == 'text':
-                messages.append(inp['value'])
+                # messages.append(inp['value'])
+                messages.append(inp['value'] + self.prompt)
             elif inp['type'] == 'image':
                 messages.append(Part.from_image(Image.load_from_file(inp['value'])))
+            elif inp['type'] == 'answer':
+                messages.append(inp['value'])
+            else:
+                raise ValueError(f"Unsupported input type: {inp['type']}")
         return messages
 
     def generate_inner(self, inputs, **kwargs) -> str:
@@ -73,7 +87,13 @@ class GeminiWrapper(BaseAPI):
             assert isinstance(inputs, list)
             model = self.model
             messages = self.build_msgs_genai(inputs)
-            gen_config = dict(max_output_tokens=self.max_tokens, temperature=self.temperature)
+            # gen_config = dict(max_output_tokens=self.max_tokens, temperature=self.temperature)
+            print(f"Messages: {messages}")
+            if self.thinking_budget is not None:
+                gen_config = dict(max_output_tokens=self.max_tokens, temperature=self.temperature,
+                                  thinking_config=types.ThinkingConfig(thinking_budget=self.thinking_budget, include_thoughts=True))
+            else:
+                gen_config = dict(max_output_tokens=self.max_tokens, temperature=self.temperature)
             gen_config.update(kwargs)
             try:
                 resp = self.client.models.generate_content(

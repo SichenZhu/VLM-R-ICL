@@ -91,7 +91,12 @@ class JICES:
             idx = data.iloc[i]['index']
 
             if hasattr(self.model, 'use_custom_prompt') and self.model.use_custom_prompt(dataset_name):
-                struct = self.model.build_prompt(data.iloc[i], dataset=dataset_name)
+                if self.use_ans_feat:
+                    struct = self.model.build_prompt(data.iloc[i], dataset=dataset_name, use_answer=True)
+                else:
+                    struct = self.model.build_prompt(data.iloc[i], dataset=dataset_name)
+                if use_answer:
+                    struct_answer = self.model.build_prompt(data.iloc[i], dataset=dataset_name, use_answer=True)
             else:
                 if self.use_ans_feat:
                     struct = dataset.build_prompt(data.iloc[i], use_answer=True)

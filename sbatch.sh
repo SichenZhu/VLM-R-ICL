@@ -16,6 +16,9 @@
 # support_dataset="TextVQA_TRAIN"
 # query_dataset="TextVQA_VAL"
 
+# support_dataset="OK-VQA_TRAIN"
+# query_dataset="OK-VQA_VAL"
+
 # support_dataset="ScienceQA_TRAIN"
 # support_dataset="ScienceQA_TRAIN_correct"
 # support_dataset="ScienceQA_TRAIN_QCME"
@@ -38,8 +41,12 @@
 
 cd /data1/szhu337/VLM_proj/VLM-R-ICL
 
-export model="VL-Rethinker-72B"
-export icl_rationale=1 # 0: icl_rationale=False (base model), 1: icl_rationale=True (reasoning model)
+export model="GeminiFlash2-5-thinking"
+export icl_rationale=1
+# export model="InternVL2_5-38B-MPO"
+# export icl_rationale=1
+# export model="VL-Rethinker-72B"
+# export icl_rationale=1 # 0: icl_rationale=False (base model), 1: icl_rationale=True (reasoning model)
 # export model="Qwen2.5-VL-72B-Instruct"
 # export icl_rationale=0
 

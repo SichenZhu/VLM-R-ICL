@@ -8,7 +8,7 @@ from ..smp import get_logger, parse_file, concat_images_vlmeval, LMUDataRoot, md
 
 class BaseAPI:
 
-    allowed_types = ['text', 'image']
+    allowed_types = ['text', 'image', 'answer']
     INTERLEAVE = True
     INSTALL_REQ = False
 
@@ -127,11 +127,17 @@ class BaseAPI:
         elif self.check_content(inputs) == 'listdict':
             for item in inputs:
                 assert 'type' in item and 'value' in item
-                mime, s = parse_file(item['value'])
-                if mime is None:
-                    assert item['type'] == 'text', item['value']
-                else:
-                    assert mime.split('/')[0] == item['type']
+                # mime, s = parse_file(item['value'])
+                # if mime is None:
+                #     assert item['type'] == 'text', item['value']
+                # else:
+                #     assert mime.split('/')[0] == item['type']
+                if item['type'] == 'image':
+                    mime, s = parse_file(item['value'])
+                    if mime is None:
+                        print(f'Warning: {item["value"]} is not a valid image file.')
+                    assert mime.split('/')[0] == item['type'], f"Invalid type: {item['type']}, {mime}, {item['value']}"
+                    # AssertionError: Invalid type: answer, url                
                     item['value'] = s
             return inputs
         else:
